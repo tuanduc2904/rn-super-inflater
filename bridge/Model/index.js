@@ -9,22 +9,25 @@ function flexibleMerge(record, key, value) {
 }
 
 function IRModel(record) {
-  this.platform = pathOr('android', ['platform'], record)
+  this.os = pathOr('android', ['os'], record)
   this.headers = pathOr({}, ['headers'], record)
-  this.body = pathOr([], ['body'], record)
-  this.params = pathOr([], ['params'], record)
+  this.body = pathOr({}, ['body'], record)
+  this.params = pathOr({}, ['params'], record)
   this.url = pathOr(null, ['url'], record)
-  this.response = pathOr(30000, ['response'], record)
-  this.deadline = pathOr(60000, ['deadline'], record)
+  this.timeup = pathOr({ response: 60000, deadline: 90000 }, ['timeup'], record)
+  this.files = pathOr([], ['files'], record)
 }
 
 IRModel.prototype = {
+  fix: function(key, value) {
+    return assocPath([key], value, this)
+  },
   set: function(key, value) {
     const headers = flexibleMerge(this.headers, key, value)
     return assocPath(['headers'], headers, this)
   },
   platform: function(value) {
-    return assocPath(['platform'], value, this)
+    return assocPath(['os'], value, this)
   },
   query: function(key, value) {
     const params = flexibleMerge(this.params, key, value)
@@ -36,75 +39,118 @@ IRModel.prototype = {
 
     return assocPath(['body'], body, this)
   },
-  timeout: function(timeout) {
-    const { deadline, response } = timeout
-
-    return assocPath(['response'], response, this)
-      .assocPath(['deadline'], deadline, this)
+  timeout: function(value) {
+    return assocPath(['timeup'], value, this)
   },
   get: function(url) {
-    const { headers, params, response, deadline } = this
+    const { headers, params, timeup } = this
 
     return iRequest
       .get(url)
       .set(headers)
-      .timeout({
-        response: response, // Wait 5 seconds for the server to start sending,
-        deadline: deadline // but allow 1 minute for the file to finish loading.
-      })
+      .timeout(timeup)
       .use(prefix)
       .query(params)
   },
   post: function(url) {
-    const { headers, body, response, deadline } = this
+    const { headers, body, timeup } = this
 
     return iRequest
       .post(url)
       .set(headers)
-      .timeout({
-        response: response, // Wait 5 seconds for the server to start sending,
-        deadline: deadline // but allow 1 minute for the file to finish loading.
-      })
+      .timeout(timeup)
       .use(prefix)
       .send(body)
   },
+  field: function(body) {
+    const { headers, timeup, os, url, files } = this
+    if (os === 'android') {
+      return RNInflate.multiPost(url, headers, body, files)
+    }
+    var req = iRequest
+    .post(url)
+    .set(headers)
+    .timeout(timeup)
+    .use(prefix)
+    files.map((file, i)=> {
+      req.attach(`file ${i}`, file.uri)
+    })
+    return req.field('dataSet', body)
+    
+  },
   put: function(url) {
-    const { headers, body, response, deadline } = this
+    const { headers, body, timeup } = this
 
     return iRequest
       .put(url)
       .set(headers)
-      .timeout({
-        response: response, // Wait 5 seconds for the server to start sending,
-        deadline: deadline // but allow 1 minute for the file to finish loading.
-      })
+      .timeout(timeup)
       .use(prefix)
       .send(body)
   },
   delete: function(url) {
-    const { headers, response, deadline } = this
+    const { headers, timeup } = this
 
     return iRequest
       .delete(url)
       .set(headers)
-      .timeout({
-        response: response, // Wait 5 seconds for the server to start sending,
-        deadline: deadline // but allow 1 minute for the file to finish loading.
-      })
+      .timeout(timeup)
       .use(prefix)
   },
-  inflate: function(url) {
-    const { headers, params, platform } = this
+  getInflate: function(url) {
+    const { headers, params, os, timeup } = this
 
-    if (platform === 'android') {
-      return RNInflate.getRequest(url)
+    if (os === 'android') {
+      return RNInflate.get(url, headers, params)
     }
 
-    return request
+    return iRequest
       .get(url)
       .set(headers)
-      .prefix(prefix)
+      .use(prefix)
+      .timeout(timeup)
       .query(params)
+  },
+  submitInflate: function(url) {
+    const { headers, body, os, timeup } = this
+
+    if (os === 'android') {
+      return RNInflate.post(url, headers, body)
+    }
+
+    return iRequest
+      .post(url)
+      .set(headers)
+      .timeout(timeup)
+      .use(prefix)
+      .send(body)
+  },
+  putInflate: function(url) {
+    const { headers, body, os, timeup } = this
+
+    if (os === 'android') {
+      return RNInflate.put(url, headers, body)
+    }
+
+    return iRequest
+      .put(url)
+      .set(headers)
+      .timeout(timeup)
+      .use(prefix)
+      .send(body)
+  },
+  deleteInflate: function(url) {
+    const { headers, os, timeup } = this
+
+    if (os === 'android') {
+      return RNInflate.delete(url, headers)
+    }
+
+    return iRequest
+      .delete(url)
+      .set(headers)
+      .timeout(timeup)
+      .use(prefix)
   }
 }
 

@@ -1,26 +1,36 @@
 {
-  "name": "rn-inflate-manager",
-  "author": "john@techfox.io",
-  "version": "0.5.2",
+  "name": "rn-super-inflater",
+  "author": "tuanduc2904@gmail.com",
+  "version": "1.2.1",
   "description": "## Getting started",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "react-native"
+    "react-native",
+    "react-native-inflate",
+    "inflate",
+    "deflate",
+    "gzip",
+    "super-inflater",
+    "inflater",
+    "deflate",
+    "rn-super-inflater"
   ],
   "license": "ISC",
-  "peerDependencies": {
-    "react-native": "^0.41.2",
-    "react-native-windows": "0.41.0-rc.1"
-  },
   "dependencies": {
     "ramda": "^0.26.1",
-    "react-native": "^0.60.4",
-    "react-native-windows": "^0.59.0-rc.1",
-    "superagent": "^5.1.0",
-    "superagent-prefix": "^0.0.2"
+    "superagent": "^8.1.2",
+    "superagent-prefix": "0.0.2"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:tuanduc2904/super-inflater.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tuanduc2904/super-inflater/issues"
+  },
+  "homepage": "https://github.com/tuanduc2904/super-inflater#readme"
 }
