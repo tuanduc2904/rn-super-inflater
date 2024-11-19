@@ -1,4 +1,4 @@
-package com.itg.itghelper.helper;
+package com.itghelper;
 
 import com.facebook.react.modules.network.OkHttpClientFactory;
 import com.facebook.react.modules.network.ReactCookieJarContainer;

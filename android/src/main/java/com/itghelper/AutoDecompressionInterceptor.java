@@ -1,4 +1,4 @@
-package com.itg.itghelper.helper;
+package com.itghelper;
 
 import okhttp3.Interceptor;
 import okhttp3.Request;
