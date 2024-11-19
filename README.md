@@ -24,7 +24,7 @@ OR
 #### Android
 
 1. Open up `android/app/src/main/java/[...]/MainActivity.java`
-  - Add `import com.reactlibrary.SuperInflaterPackage;` to the imports at the top of the file
+  - Add `import com.inflate.SuperInflaterPackage;` to the imports at the top of the file
   - Add `new SuperInflaterPackage()` to the list returned by the `getPackages()` method
 2. Append the following lines to `android/settings.gradle`:
     ```
