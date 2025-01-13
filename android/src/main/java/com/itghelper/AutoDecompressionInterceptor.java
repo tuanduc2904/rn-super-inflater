@@ -4,57 +4,71 @@ import okhttp3.Interceptor;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.zip.InflaterInputStream;
-import java.util.zip.Inflater;
+import okio.Buffer;
+import okio.BufferedSource;
+import okio.InflaterSource;
+import okio.Okio;
 import android.util.Log;
-import org.apache.commons.io.output.ByteArrayOutputStream;
-import java.io.BufferedInputStream;
-
-
+import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.net.ConnectException;
+import java.util.concurrent.TimeUnit;
+import okhttp3.OkHttpClient;
+import java.util.zip.Inflater;
 
 public class AutoDecompressionInterceptor implements Interceptor {
     private static final String TAG = "OkHttpInterceptor";
 
     @Override
     public Response intercept(Chain chain) throws IOException {
-        // Tạo request mới với Header yêu cầu gzip, deflate
-        Request request = chain.request().newBuilder().build();
+        Request request = chain.request();
+        Response response;
 
-        Response response = chain.proceed(request);
+        try {
+            // Thực hiện yêu cầu HTTP
+            response = chain.proceed(request);
+        } catch (SocketTimeoutException e) {
+            Log.e(TAG, "Request timed out: " + e.getMessage());
+            throw new IOException("Server took too long to respond.");
+        } catch (ConnectException e) {
+            Log.e(TAG, "Failed to connect to server: " + e.getMessage());
+            throw new IOException("Unable to connect to server. Please check your connection.");
+        } catch (IOException e) {
+            Log.e(TAG, "Network error: " + e.getMessage());
+            throw e;
+        }
+
         String encoding = response.header("Content-Encoding");
-        // Kiểm tra và giải nén theo encoding
-        Log.d(TAG, "bodyRaw: "+ response.body().toString());
         if ("deflate".equalsIgnoreCase(encoding)) {
-            Inflater deCompressor = new Inflater(true);
-            return decompressResponse(response, new InflaterInputStream(response.body().byteStream(), deCompressor));
+            return decompressResponse(response);
         }
 
-        return response; // Trả về phản hồi nếu không cần giải nén
+        return response;
     }
 
-    // Phương thức giải nén dữ liệu từ InputStream
-    private Response decompressResponse(Response response, InputStream decompressedStream) throws IOException {
-        String validJson;
-        byte[] bodyString = readAllBytes(decompressedStream);
-        Log.d(TAG, "bodyFinal"+ bodyString.toString());
-
-        ResponseBody decompressedBody = ResponseBody.create(response.body().contentType(), bodyString);
-        return response.newBuilder().body(decompressedBody).build();
-    }
-
-    // Đọc toàn bộ nội dung từ InputStream
-    private byte[] readAllBytes(InputStream inputStream) throws IOException {
-
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int length;
-        BufferedInputStream b = new BufferedInputStream(inputStream);
-
-        while ((length = b.read(buffer)) > 0) {
-            out.write(buffer, 0, length);
+    private Response decompressResponse(Response response) throws IOException {
+        ResponseBody responseBody = response.body();
+        if (responseBody == null) {
+            return response;
         }
-        return out.toByteArray();
+
+        Inflater inflater = new Inflater(true);
+        try (BufferedSource inflaterSource = Okio.buffer(new InflaterSource(Okio.source(responseBody.byteStream()), inflater))) {
+            Buffer buffer = new Buffer();
+            while (inflaterSource.read(buffer, 8192) != -1) {
+                // Đọc dữ liệu giải nén vào buffer
+            }
+
+            ResponseBody decompressedBody = ResponseBody.create(responseBody.contentType(), buffer.readByteArray());
+            return response.newBuilder()
+                    .body(decompressedBody)
+                    .removeHeader("Content-Encoding")
+                    .build();
+        } catch (IOException e) {
+            Log.e(TAG, "Decompression failed: " + e.getMessage());
+            throw e;
+        } finally {
+            inflater.end();
+        }
     }
 }

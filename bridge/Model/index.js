@@ -1,6 +1,5 @@
-import { assocPath, construct, merge, pathOr } from "ramda";
-import iRequest from "superagent";
-const prefix = require("superagent-prefix")("/static");
+import axios from "axios";
+import { assocPath, merge, pathOr } from "ramda";
 
 function flexibleMerge(record, key, value) {
   return typeof key === "object"
@@ -15,7 +14,7 @@ function IRModel(record) {
   this.params = pathOr({}, ["params"], record);
   this.url = pathOr(null, ["url"], record);
   this.timeup = pathOr(
-    { response: 60000, deadline: 90000 },
+    { response: 30000 },
     ["timeup"],
     record
   );
@@ -35,12 +34,10 @@ IRModel.prototype = {
   },
   query: function (key, value) {
     const params = flexibleMerge(this.params, key, value);
-
     return assocPath(["params"], params, this);
   },
   send: function (key, value) {
     const body = flexibleMerge(this.body, key, value);
-
     return assocPath(["body"], body, this);
   },
   timeout: function (value) {
@@ -48,82 +45,80 @@ IRModel.prototype = {
   },
   get: function (url) {
     const { headers, params, timeup } = this;
-
-    return iRequest
-      .get(url)
-      .set(headers)
-      .timeout(timeup)
-      .use(prefix)
-      .query(params);
+    return axios.get(url, {
+      headers,
+      params,
+      timeout: timeup.response,
+    });
   },
   post: function (url) {
     const { headers, body, timeup } = this;
-
-    return iRequest
-      .post(url)
-      .set(headers)
-      .timeout(timeup)
-      .use(prefix)
-      .send(body);
+    return axios.post(url, body, {
+      headers,
+      timeout: timeup.response,
+    });
   },
   field: function (body) {
-    const { headers, timeup, os, url, files } = this;
-    var req = iRequest.post(url).set(headers).timeout(timeup).use(prefix);
-    files.map((file, i) => {
-      req.attach(`file ${i}`, file.uri);
+    const { headers, timeup, files, url } = this;
+    const formData = new FormData();
+
+    files.forEach((file, i) => {
+      formData.append(`file_${i}`, file.uri);
     });
-    return req.field("dataSet", body);
+    formData.append("dataSet", body);
+
+    return axios.post(url, formData, {
+      headers: { ...headers, "Content-Type": "multipart/form-data" },
+      timeout: timeup.response,
+    });
   },
   put: function (url) {
     const { headers, body, timeup } = this;
-
-    return iRequest
-      .put(url)
-      .set(headers)
-      .timeout(timeup)
-      .use(prefix)
-      .send(body);
+    return axios.put(url, body, {
+      headers,
+      timeout: timeup.response,
+    });
   },
   delete: function (url) {
     const { headers, timeup } = this;
-
-    return iRequest.delete(url).set(headers).timeout(timeup).use(prefix);
+    return axios.delete(url, {
+      headers,
+      timeout: timeup.response,
+    });
   },
   getInflate: function (url) {
-    const { headers, params, os, timeup } = this;
-
-    return iRequest
-      .get(url)
-      .set(headers)
-      .use(prefix)
-      .timeout(timeup)
-      .query(params);
+    const { headers, params, timeup } = this;
+    return axios.get(url, {
+      headers,
+      params,
+      timeout: timeup.response,
+      responseType: "arraybuffer",
+    });
   },
   submitInflate: function (url) {
-    const { headers, body, os, timeup } = this;
-
-    return iRequest
-      .post(url)
-      .set(headers)
-      .timeout(timeup)
-      .use(prefix)
-      .send(body);
+    const { headers, body, timeup } = this;
+    return axios.post(url, body, {
+      headers,
+      timeout: timeup.response,
+      responseType: "arraybuffer",
+    });
   },
   putInflate: function (url) {
-    const { headers, body, os, timeup } = this;
-
-    return iRequest
-      .put(url)
-      .set(headers)
-      .timeout(timeup)
-      .use(prefix)
-      .send(body);
+    const { headers, body, timeup } = this;
+    return axios.put(url, body, {
+      headers,
+      timeout: timeup.response,
+      responseType: "arraybuffer",
+    });
   },
   deleteInflate: function (url) {
-    const { headers, os, timeup } = this;
-
-    return iRequest.delete(url).set(headers).timeout(timeup).use(prefix);
+    const { headers, timeup } = this;
+    return axios.delete(url, {
+      headers,
+      timeout: timeup.response,
+      responseType: "arraybuffer",
+    });
   },
 };
 
-export default construct(IRModel);
+export default (record) => new IRModel(record);
