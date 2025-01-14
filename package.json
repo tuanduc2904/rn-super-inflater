@@ -1,7 +1,7 @@
 {
   "name": "rn-super-inflater",
   "author": "tuanduc2904@gmail.com",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "## Getting started",
   "main": "index.js",
   "scripts": {
@@ -20,8 +20,9 @@
   ],
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.7.9",
-    "ramda": "^0.26.1"
+    "ramda": "^0.26.1",
+    "superagent": "^8.1.2",
+    "superagent-prefix": "0.0.2"
   },
   "devDependencies": {},
   "repository": {
