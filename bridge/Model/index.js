@@ -15,7 +15,7 @@ function IRModel(record) {
   this.params = pathOr({}, ["params"], record);
   this.url = pathOr(null, ["url"], record);
   this.timeup = pathOr(
-    { response: 60000, deadline: 90000 },
+    { response: 30000, deadline: 30000 },
     ["timeup"],
     record
   );
@@ -52,7 +52,7 @@ IRModel.prototype = {
     return iRequest
       .get(url)
       .set(headers)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .use(prefix)
       .query(params);
   },
@@ -62,13 +62,17 @@ IRModel.prototype = {
     return iRequest
       .post(url)
       .set(headers)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .use(prefix)
       .send(body);
   },
   field: function (body) {
     const { headers, timeup, os, url, files } = this;
-    var req = iRequest.post(url).set(headers).timeout(timeup).use(prefix);
+    var req = iRequest
+      .post(url)
+      .set(headers)
+      .timeout(timeup.response)
+      .use(prefix);
     files.map((file, i) => {
       req.attach(`file ${i}`, file.uri);
     });
@@ -80,14 +84,18 @@ IRModel.prototype = {
     return iRequest
       .put(url)
       .set(headers)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .use(prefix)
       .send(body);
   },
   delete: function (url) {
     const { headers, timeup } = this;
 
-    return iRequest.delete(url).set(headers).timeout(timeup).use(prefix);
+    return iRequest
+      .delete(url)
+      .set(headers)
+      .timeout(timeup.response)
+      .use(prefix);
   },
   getInflate: function (url) {
     const { headers, params, os, timeup } = this;
@@ -96,7 +104,7 @@ IRModel.prototype = {
       .get(url)
       .set(headers)
       .use(prefix)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .query(params);
   },
   submitInflate: function (url) {
@@ -105,7 +113,7 @@ IRModel.prototype = {
     return iRequest
       .post(url)
       .set(headers)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .use(prefix)
       .send(body);
   },
@@ -115,14 +123,18 @@ IRModel.prototype = {
     return iRequest
       .put(url)
       .set(headers)
-      .timeout(timeup)
+      .timeout(timeup.response)
       .use(prefix)
       .send(body);
   },
   deleteInflate: function (url) {
     const { headers, os, timeup } = this;
 
-    return iRequest.delete(url).set(headers).timeout(timeup).use(prefix);
+    return iRequest
+      .delete(url)
+      .set(headers)
+      .timeout(timeup.response)
+      .use(prefix);
   },
 };
 
