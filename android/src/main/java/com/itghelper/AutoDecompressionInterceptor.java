@@ -17,15 +17,21 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.ConnectException;
 import java.util.zip.Inflater;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 public class AutoDecompressionInterceptor implements Interceptor {
     private static final String TAG = "OkHttpInterceptor";
+    private static final String API_LOG_FILE = "API_Log.txt";
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+    private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
+    /** --- Ghi log lỗi như cũ --- */
     private void logToFile(String message) {
         try {
             String downloadPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath();
@@ -38,19 +44,44 @@ public class AutoDecompressionInterceptor implements Interceptor {
         }
     }
 
+    /** --- Ghi log thời gian API --- */
+    private void logApiTime(String path, long durationMs) {
+        try {
+            String downloadPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath();
+            File logFile = new File(downloadPath, API_LOG_FILE);
+
+            // Nếu sang ngày mới thì xóa file cũ
+            if (logFile.exists()) {
+                String lastDate = DATE_FORMAT.format(new Date(logFile.lastModified()));
+                String today = DATE_FORMAT.format(new Date());
+                if (!today.equals(lastDate)) {
+                    boolean deleted = logFile.delete();
+                    if (deleted) Log.i(TAG, "Old API log deleted for new day");
+                }
+            }
+
+            // Ghi log mới
+            PrintWriter out = new PrintWriter(new FileWriter(logFile, true));
+            String timeNow = TIME_FORMAT.format(new Date());
+            out.println(timeNow + " | " + durationMs + " ms | " + path);
+            out.close();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to write API log: " + e.getMessage());
+        }
+    }
+
     @Override
     public Response intercept(Chain chain) throws IOException {
         Request request = chain.request();
 
-        // Thiết lập timeout cho request này là 30 giây (30000 ms)
-        // Chỉ áp dụng nếu OkHttp version >= 3.12 (có support timeout per-call)
-        // Nếu không, cần set ở OkHttpClient builder
+        long startTime = System.nanoTime();
         Response response;
+
         try {
             response = chain
-                .withConnectTimeout(30_000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .withReadTimeout(30_000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .withWriteTimeout(30_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .withConnectTimeout(30_000, TimeUnit.MILLISECONDS)
+                .withReadTimeout(30_000, TimeUnit.MILLISECONDS)
+                .withWriteTimeout(30_000, TimeUnit.MILLISECONDS)
                 .proceed(request);
         } catch (SocketTimeoutException e) {
             logToFile("Request timed out: " + e.getMessage()
@@ -63,86 +94,55 @@ public class AutoDecompressionInterceptor implements Interceptor {
                     + " \n RequestBody: " + (request.body() != null ? request.body().toString() : "null"));
             throw new IOException("Unable to connect to server. Please check your connection.");
         } catch (IOException e) {
-            String responseBodyStr = null;
-            try {
-                if (e instanceof okhttp3.internal.http2.StreamResetException) {
-                    responseBodyStr = "StreamResetException: cannot read response body";
-                } else if (chain != null && chain.call() != null && chain.call().isExecuted()) {
-                    Response errorResponse = chain.proceed(request);
-                    if (errorResponse.body() != null) {
-                        ResponseBody peekBody = errorResponse.peekBody(1024);
-                        responseBodyStr = peekBody.string();
-                    }
-                }
-            } catch (Exception ex) {
-                responseBodyStr = "Cannot read response body: " + ex.getMessage();
-            }
             logToFile("Network error: " + e.getMessage()
                     + " \n URL: " + request.url()
-                    + " \n RequestBody: " + (request.body() != null ? request.body().toString() : "null")
-                    + " \n ResponseBody: " + responseBodyStr);
+                    + " \n RequestBody: " + (request.body() != null ? request.body().toString() : "null"));
             throw e;
         }
 
+  
         String encoding = response.header("Content-Encoding");
         if ("deflate".equalsIgnoreCase(encoding)) {
-            return decompressResponse(response);
+            response = decompressResponse(response);
         }
+        long endTime = System.nanoTime();
+        long durationMs = (endTime - startTime) / 1_000_000L;
+        logApiTime(request.url().encodedPath(), durationMs);
 
         return response;
     }
 
+    /** --- Giải nén response deflate --- */
     private Response decompressResponse(Response response) throws IOException {
-        ResponseBody responseBody = response.body();
-
-        // Bỏ qua nếu không có body hoặc là response không có nội dung
-        if (responseBody == null || response.code() == 204 || response.code() == 304) {
-            return response;
+        ResponseBody body = response.body();
+        if (body == null || response.code() == 204 || response.code() == 304) {
+            return response; // không có nội dung thì bỏ qua
         }
 
-        byte[] compressedBytes = responseBody.bytes();
-        byte[] decompressedBytes = null;
-        boolean success = false;
-        IOException lastException = null;
+        Inflater inflater = new Inflater(true); // nowrap = true → raw deflate
+        try {
+            // Tạo nguồn đọc giải nén
+            BufferedSource decompressedSource = Okio.buffer(
+                new InflaterSource(body.source(), inflater)
+            );
 
-        // Thử giải nén với cả nowrap = true (raw deflate) và false (zlib-wrapped)
-        for (boolean nowrap : new boolean[]{true, false}) {
-            Inflater inflater = new Inflater(nowrap);
-            try (
-                BufferedSource inflaterSource = Okio.buffer(
-                    new InflaterSource(
-                        Okio.source(new java.io.ByteArrayInputStream(compressedBytes)), inflater
-                    )
-                );
-                Buffer buffer = new Buffer()
-            ) {
-                while (inflaterSource.read(buffer, 8192) != -1) {
-                    // đọc hết dữ liệu giải nén vào buffer
-                }
+            // Đọc toàn bộ dữ liệu đã giải nén vào buffer
+            Buffer buffer = new Buffer();
+            decompressedSource.readAll(buffer);
 
-                decompressedBytes = buffer.readByteArray();
-                success = true;
-                break;
-            } catch (IOException e) {
-                Log.w(TAG, "Decompression failed with nowrap=" + nowrap + ": " + e.getMessage());
-                lastException = e;
-            } finally {
-                inflater.end();
-            }
+            // Tạo response body mới từ dữ liệu đã giải nén
+            ResponseBody decompressedBody = ResponseBody.create(
+                body.contentType(),
+                buffer.readByteArray()
+            );
+
+            // Xây lại response, bỏ header Content-Encoding
+            return response.newBuilder()
+                    .removeHeader("Content-Encoding")
+                    .body(decompressedBody)
+                    .build();
+        } finally {
+            inflater.end(); // giải phóng tài nguyên native
         }
-
-        if (!success) {
-            throw new IOException("Failed to decompress response", lastException);
-        }
-
-        ResponseBody decompressedBody = ResponseBody.create(
-            responseBody.contentType(),
-            decompressedBytes
-        );
-
-        return response.newBuilder()
-                .body(decompressedBody)
-                .removeHeader("Content-Encoding")
-                .build();
     }
 }
